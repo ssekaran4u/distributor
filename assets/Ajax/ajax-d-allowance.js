@@ -1,0 +1,134 @@
+$(document).ready(function (e) {
+  $('#add-form').on('submit', function (e) {
+    e.preventDefault();
+    $.ajax({
+      type: 'POST',
+      url: 'AjaxFunction/AjaxDelarAllowance.php',
+      data: new FormData(this),
+      contentType: false,
+      cache: false,
+      processData: false,
+      dataType: 'json',
+      beforeSend: function (x) {
+        $('#status').show();
+        $('#preloader').show();
+      }
+    }).done(function (response)
+    {
+      $('#status').hide();
+      $('#preloader').hide();
+      if (response['status'] == true)
+      {
+        $('.successCls').removeClass('hide');
+        $('.successCls').addClass('show');
+        $('.errorCls').addClass('hide');
+        $('.successmsg').html(response['message']);
+        $('#add-form')[0].reset();
+        alertHelper();
+      } 
+      else
+      {
+        $('.errorCls').removeClass('hide');
+        $('.errorCls').addClass('show');
+        $('.successCls').addClass('hide');
+        $('.errormsg').html(response['message']);
+        alertHelper();
+      }
+    });
+  });
+  //Edit Category
+  $('#edit-form').on('submit', function (e) {
+    e.preventDefault();
+    $.ajax({
+        type: 'POST',
+        url: 'AjaxFunction/AjaxDelarAllowance.php',
+        data: new FormData(this),
+        contentType: false,
+        cache: false,
+        processData: false,
+        dataType: 'json',
+        beforeSend: function (x) {
+          $('#status').show();
+          $('#preloader').show();
+        }
+    }).done(function (response)
+    {
+      $('#status').hide();
+      $('#preloader').hide();
+      if (response['status'] == true)
+      {
+        $('.successCls').removeClass('hide');
+        $('.successCls').addClass('show');
+        $('.errorCls').addClass('hide');
+        $('.successmsg').html(response['message']);
+        $('#edit-form') [0].reset();
+        alertHelper();
+      } 
+      else
+      {
+        $('.errorCls').removeClass('hide');
+        $('.errorCls').addClass('show');
+        $('.successCls').addClass('hide');
+        $('.errormsg').html(response['message']);
+        alertHelper();
+      }
+    });
+  });
+  $(document).on('click', '.delete-city', function () {
+    alert('123');
+    var id = $(this).data('id');
+    $.ajax({
+      type: 'POST',
+      url: 'AjaxFunction/DeleteFunction.php',
+      data: {
+        'id': id,
+        'method': 'delete',
+        'target': 'city'
+      },
+      dataType: 'JSON',
+      beforeSend: function (x) {
+        $('#status').show();
+        $('#preloader').show();
+      }
+    }).done(function (response)
+    {
+        $('#status').hide();
+      $('#preloader').hide();
+      $('.loading').css('visibility', 'hidden');
+      if (response['status'] == true)
+      {
+        $('.successCls').removeClass('hide');
+        $('.successCls').addClass('show');
+        $('.errorCls').addClass('hide');
+        $('.successmsg').html(response['message']);
+        var search = $('#search').val();
+        var sorts = $('.table .show').parent('th').data('sort');
+        var order = $('#status').val();
+        loadInCartitems(1, sorts, order, search);
+        alertHelper();
+      } 
+      else
+      {
+        $('.errorCls').removeClass('hide');
+        $('.errorCls').addClass('show');
+        $('.successCls').addClass('hide');
+        $('.errormsg').html(response['message']);
+        alertHelper();
+      }
+    });
+  });
+  function alertHelper()
+  {
+    setTimeout(function ()
+    {
+      $('.successCls').removeClass('show').addClass('hide');
+      $('.errorCls').removeClass('show').addClass('hide');
+    }, 5000);
+  }
+  function gototop() {
+    $('html, body').animate({
+      scrollTop: 0
+    }, 1000);
+  }
+  
+});

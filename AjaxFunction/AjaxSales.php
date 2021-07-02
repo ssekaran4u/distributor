@@ -1,0 +1,487 @@
+<?php
+session_start();
+include '../inc/config.php';
+// $branch = isAdminDetails($conn);
+if($_POST['method'] =='add-form')
+{
+	$importtype=$_POST['importtype'];
+	$error = FALSE;
+
+	$errors = array();
+    $required = array('customer_id', 'bal_lmt', 'dated', 'importtype');
+    if($importtype != 1)
+    {
+    	array_push($required, "cid","pid","code","price");
+    }
+    foreach ($required as $field) 
+    {
+        if(empty($_POST[$field]))
+        {
+            $error = TRUE;
+        }
+    }
+     //print_r($required);
+    // exit;
+    
+	if($error)
+	{
+		$response['status']=false;
+		$response['message']="<strong>Oops ! </strong>Please Fill All Fields.";
+        echo json_encode($response);
+        return;
+	}
+	else
+	{
+		if($importtype == 1)
+		{
+			$so_no       = mysqli_real_escape_string($conn, trim($_POST['so_no']));
+			$customer_id = mysqli_real_escape_string($conn, trim($_POST['customer_id']));
+          	$tcs_type    = mysqli_real_escape_string($conn, trim($_POST['tcs_type']));
+			$order_no    = mysqli_real_escape_string($conn, trim($_POST['order_no']));
+			$dated       = mysqli_real_escape_string($conn, trim($_POST['dated']));
+			$docu_no     = mysqli_real_escape_string($conn, trim($_POST['docu_no']));
+			$despatched  = mysqli_real_escape_string($conn, trim($_POST['despatched']));
+    		$filename = $_FILES["csvfile"]["name"];
+    		$val = explode(".",$filename);
+			$k   = 0;
+			$qty = 1;
+			if($val[1] =="csv" )
+			{
+				$fileData = file_get_contents($_FILES['csvfile']['tmp_name']);
+				if($fileData)
+				{
+					$arrDetails = array();
+				    $datas = str_getcsv($fileData, "\n"); 
+				    unset($datas[0]);
+					// print_r($datas);die;
+					$countqty=!empty($datas)?count($datas):0;
+					// print_r($datas);
+					foreach($datas as $rawRow)
+					{
+						$row = str_getcsv($rawRow, ",");
+					    $code = $row[0];
+
+					    $sel_1 = mysqli_query($conn, "SELECT * FROM ss_item_stk WHERE code = '".$code."' AND delar_status = '1'");
+						$row_1 = mysqli_num_rows($sel_1) > 0;
+						if($row_1)
+						{
+							$res_1 = mysqli_fetch_object($sel_1);
+
+							$upt_1 = mysqli_query($conn, "UPDATE `ss_item_stk` SET `delar_id`='".$customer_id."',`delar_sales` = '".$so_no."' , `d_sales_date` = '".date('Y-m-d', strtotime($dated))."', `delar_status` = '0' WHERE `code` = '".$code."' ");
+
+							$sel_3 = mysqli_fetch_object(mysqli_query($conn, "SELECT * FROM `ss_items` WHERE `published` = '1' AND `id` = '".$res_1->product_id."'"));
+
+							$pro_id      = !empty($sel_3->id)?$sel_3->id:'0';
+							$oprice      = !empty($sel_3->oprice)?$sel_3->oprice:'0';
+							$allowance   = !empty($sel_3->allowance)?$sel_3->allowance:'0';
+							$sta         = !empty($sel_3->sta)?$sel_3->sta:'0';
+							$cid         = !empty($sel_3->cid)?$sel_3->cid:'0';
+							$gst         = !empty($sel_3->gst)?$sel_3->gst:'0';
+							$hsn         = !empty($sel_3->hsn)?$sel_3->hsn:'0';
+							$description = !empty($sel_3->description)?$sel_3->description:'0';
+							$extra       = !empty($sel_3->extra)?$sel_3->extra:'0';
+
+							$sel_4 = mysqli_fetch_object(mysqli_query($conn, "SELECT * FROM `ss_customers` WHERE `published` = '1' AND `id` = '".$customer_id."'"));
+
+							$d_allowance = !empty($sel_4->d_allowance)?$sel_4->d_allowance:'0';
+							$avl_lmt     = !empty($sel_4->avl_lmt)?$sel_4->avl_lmt:'0';
+
+							$sel_5 = mysqli_fetch_object(mysqli_query($conn, "SELECT * FROM `ss_dealer_price` WHERE `dealer_id` = '".$customer_id."' AND `product_id` = '".$pro_id."' AND `status` = '1' AND `published` = '1' ORDER BY `id` DESC "));
+
+							$nlc_value = isset($sel_5->nlc_value)?$sel_5->nlc_value:'';
+
+							if(!empty($nlc_value))
+				    		{
+				    			$price_val = $nlc_value;
+				    		}
+				    		else
+				    		{
+				    			$price_val = $oprice;
+				    		}
+
+							$_b_dis = $price_val * $allowance / 100;
+								
+							$_d_dis = $price_val * $sel_4->d_allowance / 100;
+
+							$_disco = $_b_dis + $sta + $_d_dis;
+
+							$_total = $price_val - $_disco;
+
+							$_tot   = $qty *  $_total;
+                          
+                          	if($tcs_type == '2')
+                            {
+                                $_tcs     = $_tot * 0.1 / 100;
+                                $last_tot = $_tot + $_tcs;
+                            }
+                            else
+                            {
+                                $_tcs     = 0;
+                                $last_tot = $_tot + $_tcs;
+                            }
+
+							if($avl_lmt > $last_tot)
+							{
+								$cre_lmt = $avl_lmt - $last_tot;
+
+								$upt_2 = mysqli_query($conn, "UPDATE `ss_customers` SET `avl_lmt` = '".$cre_lmt."' WHERE id = '".$customer_id."'");
+
+								$sel_5 = mysqli_query($conn, "SELECT `id` FROM `ss_sales` WHERE `so_no` = '".$so_no."' AND `published` = '1'");
+
+								$row_3 = mysqli_num_rows($sel_5);
+
+								if($row_3 > 0)
+								{
+									$res_2 = mysqli_fetch_object($sel_5);
+									$so_id = $res_2->id;
+
+									$sel_7 = mysqli_query($conn, "SELECT `pid` FROM ss_sales_details WHERE `so_id` = '".$so_id."' AND `pid` = '".$pro_id."'");
+
+									$row_7 = mysqli_num_rows($sel_7);
+
+									if($row_7 > 0)
+									{
+										$sel_8 = mysqli_fetch_object(mysqli_query($conn, "SELECT SUM(`qty`) AS `qty` FROM ss_sales_details WHERE `so_id` = '".$so_id."' AND `pid` = '".$pro_id."'"));
+
+										$t_qty = $sel_8->qty + 1;
+										$t_tot = $t_qty * $_total;
+                                      	
+                                      	if($tcs_type == '2')
+                                        {
+                                            $_tcs     = $_tot * 0.1 / 100;
+                                            $last_tot = $_tot + $_tcs;
+                                        }
+                                        else
+                                        {
+                                            $_tcs     = 0;
+                                            $last_tot = $_tot + $_tcs;
+                                        }
+
+										$ins_1 = mysqli_query($conn, "UPDATE `ss_sales_details` SET `qty` = '".$t_qty."', `total_cost` = '".$last_tot."' WHERE `so_id` = '".$so_re."' AND `pid` = '".$pro_id."'");
+									}
+									else
+									{
+
+										$ins_3 = mysqli_query($conn, "INSERT INTO `ss_sales_details`(`so_id`, `so_no`, `customer_id`, `cid`, `pid`, `code`, `hsn`, `qty`, `price`, `gst`, `allowance`, `sta`, `d_allowance`, `total_cost`, `createdate`) VALUES ('".$so_re."','".$so_no."','".$customer_id."','".$cid."','".$pro_id."', '".$description."','".$hsn."','".$qty."','".$price_val."','".$gst."','".$allowance."','".$sta."','".$d_allowance."', '".$last_tot."',NOW())");	
+									}
+									$stock_re = $extra - $qty;
+
+									$upt_3 = mysqli_query($conn, "UPDATE `ss_items` SET `extra`= '".$stock_re."' WHERE id = '".$pro_id."' ");
+								}
+								else
+								{	
+									$ins_2 = mysqli_query($conn, "INSERT INTO `ss_sales`(`userid`,`so_no`, `customer_id`, `tcs_type`, `order_date`, `order_no`, `dated`, `docu_no`, `despatched`, `acad_id`, `createdate`) VALUES ('".$_SESSION['uid']."','".$so_no."','".$customer_id."', '".$tcs_type."', '".date('Y-m-d')."','".$order_no."','".date('Y-m-d', strtotime($dated))."','".$docu_no."','".$despatched."', '".$_SESSION['acad_year']."', NOW())");
+									$so_re = mysqli_insert_id($conn);
+
+
+									$ins_3 = mysqli_query($conn, "INSERT INTO `ss_sales_details`(`so_id`, `so_no`, `customer_id`, `cid`, `pid`, `code`, `hsn`, `qty`, `price`, `gst`, `allowance`, `sta`, `d_allowance`, `total_cost`, `createdate`) VALUES ('".$so_re."','".$so_no."','".$customer_id."','".$cid."','".$pro_id."', '".$description."','".$hsn."','".$qty."','".$price_val."','".$gst."','".$allowance."','".$sta."','".$d_allowance."', '".$last_tot."',NOW())");
+
+									$sel_6 = mysqli_fetch_object(mysqli_query($conn, "SELECT extra FROM `ss_items` WHERE id = '".$pro_id."' AND published = '1' AND status = '1'"));
+
+									$stock_re = $extra - $qty;
+
+									$upt_3 = mysqli_query($conn, "UPDATE `ss_items` SET `extra`= '".$stock_re."' WHERE id = '".$pro_id."' ");
+								}
+							}
+						}
+						else
+						{
+							echo "string";
+						}
+						$k++;
+					}
+				}
+				if($k)
+				{	
+
+					$response['status']=true;
+					$response['message']="<strong>Your Sales Added Successfully.";
+				    echo json_encode($response);
+				}
+				else
+				{
+					$response['status']=false;
+					$response['message']="<strong>Oops ! </strong>Your Sales Can't Added.";
+			        echo json_encode($response);
+				}
+			}
+		}	
+		else
+		{
+			$so_no         = mysqli_real_escape_string($conn, trim($_POST['so_no']));
+			// $brand_id      = mysqli_real_escape_string($conn, trim($_POST['brand_id']));
+			$customer_id   = mysqli_real_escape_string($conn, trim($_POST['customer_id']));
+          	$tcs_type      = mysqli_real_escape_string($conn, trim($_POST['tcs_type']));
+			// $delivery_nt   = mysqli_real_escape_string($conn, trim($_POST['delivery_nt']));
+			// $payment       = mysqli_real_escape_string($conn, trim($_POST['payment']));
+			// $supplier_ref  = mysqli_real_escape_string($conn, trim($_POST['supplier_ref']));
+			// $other_ref     = mysqli_real_escape_string($conn, trim($_POST['other_ref']));
+			$order_no      = mysqli_real_escape_string($conn, trim($_POST['order_no']));
+			$dated         = mysqli_real_escape_string($conn, trim($_POST['dated']));
+			$docu_no       = mysqli_real_escape_string($conn, trim($_POST['docu_no']));
+			// $delivery_date = mysqli_real_escape_string($conn, trim($_POST['delivery_date']));
+			$despatched    = mysqli_real_escape_string($conn, trim($_POST['despatched']));
+			// $destination   = mysqli_real_escape_string($conn, trim($_POST['destination']));
+			// $terms         = mysqli_real_escape_string($conn, trim($_POST['terms']));
+			$cid           = mysqli_real_escape_string($conn, trim($_POST['cid']));
+			$pid           = mysqli_real_escape_string($conn, trim($_POST['pid']));
+			$code          = $_POST['code'];
+			$description   = mysqli_real_escape_string($conn, trim($_POST['description']));
+			// $qty           = mysqli_real_escape_string($conn, trim($_POST['qty']));
+			$price         = mysqli_real_escape_string($conn, trim($_POST['price']));
+			$allowance     = mysqli_real_escape_string($conn, trim($_POST['allowance']));
+			$sta           = mysqli_real_escape_string($conn, trim($_POST['sta']));
+			$d_allowance   = mysqli_real_escape_string($conn, trim($_POST['d_allowance']));
+			$discount      = mysqli_real_escape_string($conn, trim($_POST['discount']));
+			$gst           = mysqli_real_escape_string($conn, trim($_POST['gst']));
+			// $price_val     = mysqli_real_escape_string($conn, trim($_POST['price_val']));
+			$avl_lmt       = mysqli_real_escape_string($conn, trim($_POST['avl_lmt']));
+			$hsn           = mysqli_real_escape_string($conn, trim($_POST['hsn']));
+
+			$qty = count($code);
+
+			$exits = "SELECT * FROM `ss_sales_details` WHERE `published` = '1' AND status = '1' AND `so_no` = '".$so_no."' AND pid = '".$pid."'";
+			$data = mysqli_query($conn, $exits);
+			$rsrow = mysqli_num_rows($data);
+			if($rsrow==0)
+			{
+				if($customer_id!='' && $dated!='' && $cid!='' && $pid!='' && $code!='' && $qty!='')
+				{
+					$_b_dis = $price * $allowance / 100;
+					
+					$_d_dis = $price * $d_allowance / 100;
+
+					$_disco = $_b_dis + $sta + $_d_dis + $discount;
+
+					$_total = $price - $_disco;
+
+					$_tot   = $qty *  $_total;
+                  
+                  	if($tcs_type == '2')
+                    {
+                        $_tcs     = $_tot * 0.1 / 100;
+                        $last_tot = $_tot + $_tcs;
+                    }
+                    else
+                    {
+                        $_tcs     = 0;
+                        $last_tot = $_tot + $_tcs;
+                    }
+
+					if($avl_lmt > $last_tot)
+					{
+						$cre_lmt = $avl_lmt - $last_tot;
+
+						$qry_2 = mysqli_query($conn, "UPDATE `ss_customers` SET `avl_lmt` = '".$cre_lmt."' WHERE id = '".$customer_id."'");
+
+						$qry_1 = mysqli_query($conn, "SELECT `id` FROM `ss_sales` WHERE `so_no` = '".$so_no."' AND `published` = '1'");
+						$num_1 = mysqli_num_rows($qry_1);
+						if($num_1 > 0)
+						{
+							$res_1 = mysqli_fetch_object($qry_1);
+							$so_id = $res_1->id;
+
+							$ins_1 = "INSERT INTO `ss_sales_details`(`so_id`, `so_no`, `customer_id`, `cid`, `pid`, `code`, `hsn`, `qty`, `price`, `gst`, `allowance`, `sta`, `d_allowance`, `discount`, `total_cost`, `createdate`) VALUES ('".$so_id."','".$so_no."','".$customer_id."','".$cid."','".$pid."', '".$description."','".$hsn."','".$qty."','".$price."','".$gst."','".$allowance."','".$sta."','".$d_allowance."','".$discount."', '".$last_tot."',NOW())";
+							if(mysqli_query($conn, $ins_1))
+							{	
+
+								for($i = 0 ; $i < $qty ; $i++)
+								{
+									// echo $string_version = implode(',', $code);
+									// $up_stk = mysqli_query($conn, "UPDATE `ss_item_stk` SET `sales_no` = '".$so_no."', `status` = '0' WHERE `id` = '".$code[$i]."' ");
+									$up_stk = mysqli_query($conn, "UPDATE `ss_item_stk` SET `delar_id`='".$customer_id."',`delar_sales` = '".$so_no."', `d_sales_date` = '".date('Y-m-d', strtotime($dated))."', `delar_status` = '0' WHERE `id` = '".$code[$i]."' ");
+								}
+								
+								// $stock_qy = mysqli_fetch_object(mysqli_query($conn, "SELECT extra FROM `ss_items` WHERE id = '".$pid."' AND published = '1' AND status = '1'"));
+
+								// $stock_re = $stock_qy->extra - $qty;
+
+								// $stock_up = mysqli_query($conn, "UPDATE `ss_items` SET `extra`= '".$stock_re."' WHERE id = '".$pid."' ");
+
+								$response['status']=true;
+								$response['message']="<strong>Well done ! </strong>Your Sales Added Successfully.";
+							    echo json_encode($response);
+							}
+							else
+							{
+								$response['status']=false;
+								$response['message']="<strong>Oops ! </strong>Your Sales Can't Added.";
+						        echo json_encode($response);
+							}
+						}
+						else
+						{
+							$ins_2 = mysqli_query($conn, "INSERT INTO `ss_sales`(`userid`,`so_no`, `customer_id`, `tcs_type`, `order_date`, `order_no`, `dated`, `docu_no`, `despatched`, `acad_id`, `createdate`) VALUES ('".$_SESSION['uid']."','".$so_no."','".$customer_id."', '".$tcs_type."', '".date('Y-m-d')."','".$order_no."','".date('Y-m-d', strtotime($dated))."','".$docu_no."','".$despatched."', '".$_SESSION['acad_year']."', NOW())");
+							$so_re = mysqli_insert_id($conn);
+
+							$ins_3 = "INSERT INTO `ss_sales_details`(`so_id`, `so_no`, `customer_id`, `cid`, `pid`, `code`, `hsn`, `qty`, `price`, `gst`, `allowance`, `sta`, `d_allowance`, `discount`, `total_cost`, `createdate`) VALUES ('".$so_re."','".$so_no."','".$customer_id."','".$cid."','".$pid."', '".$description."','".$hsn."','".$qty."','".$price."','".$gst."','".$allowance."','".$sta."','".$d_allowance."','".$discount."', '".$last_tot."',NOW())";
+							if(mysqli_query($conn, $ins_3))
+							{
+								for($i = 0 ; $i < $qty ; $i++)
+								{
+									// echo $string_version = implode(',', $code);
+									// $up_stk = mysqli_query($conn, "UPDATE `ss_item_stk` SET `sales_no` = '".$so_no."' ,`status` = '0' WHERE `id` = '".$code[$i]."' ");
+									$up_stk = mysqli_query($conn, "UPDATE `ss_item_stk` SET `delar_id`='".$customer_id."',`delar_sales` = '".$so_no."', `d_sales_date` = '".date('Y-m-d', strtotime($dated))."', `delar_status` = '0' WHERE `id` = '".$code[$i]."' ");
+								}
+
+								// $stock_qy = mysqli_fetch_object(mysqli_query($conn, "SELECT extra FROM `ss_items` WHERE id = '".$pid."' AND published = '1' AND status = '1'"));
+
+								// $stock_re = $stock_qy->extra - $qty;
+
+								// $stock_up = mysqli_query($conn, "UPDATE `ss_items` SET `extra`= '".$stock_re."' WHERE id = '".$pid."' ");
+
+								$response['status']=true;
+								$response['message']="<strong>Well done ! </strong>Your Sales Added Successfully.";
+							    echo json_encode($response);
+							}
+							else
+							{
+								$response['status']=false;
+								$response['message']="<strong>Oops ! </strong>Your Sales Can't Added.";
+						        echo json_encode($response);
+							}
+
+						}
+					}
+					else
+					{
+						$response['status']=false;
+						$response['message']="<strong>Oops ! </strong>Your Bill Amount Greater than Credit Limit.";
+				        echo json_encode($response);	
+					}
+				}
+			}
+			else
+			{
+				$response['status']=false;
+				$response['message']="<strong>Oops ! </strong>Your Sales Details Already Exist.";
+		        echo json_encode($response);
+			}
+		}
+	}
+}
+
+elseif($_POST['method'] =='edit-form')
+{
+	$so_no         = mysqli_real_escape_string($conn, trim($_POST['so_no']));
+	$customer_id   = mysqli_real_escape_string($conn, trim($_POST['customer_id']));
+  	$tcs_type      = mysqli_real_escape_string($conn, trim($_POST['tcs_type']));
+	$order_no      = mysqli_real_escape_string($conn, trim($_POST['order_no']));
+	$dated         = mysqli_real_escape_string($conn, trim($_POST['dated']));
+	$docu_no       = mysqli_real_escape_string($conn, trim($_POST['docu_no']));
+	$despatched    = mysqli_real_escape_string($conn, trim($_POST['despatched']));
+	$cid           = mysqli_real_escape_string($conn, trim($_POST['cid']));
+	$pid           = mysqli_real_escape_string($conn, trim($_POST['pid']));
+	$code          = $_POST['code'];
+	$description   = mysqli_real_escape_string($conn, trim($_POST['description']));
+	$price         = mysqli_real_escape_string($conn, trim($_POST['price']));
+	$allowance     = mysqli_real_escape_string($conn, trim($_POST['allowance']));
+	$sta           = mysqli_real_escape_string($conn, trim($_POST['sta']));
+	$d_allowance   = mysqli_real_escape_string($conn, trim($_POST['d_allowance']));
+	$discount      = mysqli_real_escape_string($conn, trim($_POST['discount']));
+	$gst           = mysqli_real_escape_string($conn, trim($_POST['gst']));
+	$avl_lmt       = mysqli_real_escape_string($conn, trim($_POST['avl_lmt']));
+	$hsn           = mysqli_real_escape_string($conn, trim($_POST['hsn']));
+	$auto_id       = mysqli_real_escape_string($conn, trim($_POST['auto_id']));
+
+	$qty = count($code);
+
+	if($customer_id!='' && $dated!='' && $cid!='' && $pid!='' && $code!='' && $qty!='')
+	{
+
+		$value = mysqli_fetch_object(mysqli_query($conn, "SELECT * FROM `ss_sales_details` WHERE auto_id = '".$auto_id."' AND published = '1' AND status = '1' LIMIT 0,1"));
+
+		$stk_re = $qty - $value->qty;
+
+		$_b_dis = $price * $allowance / 100;
+		
+		$_d_dis = $price * $d_allowance / 100;
+
+		$_disco = $_b_dis + $sta + $_d_dis + $discount;
+
+		$_total = $price - $_disco;
+
+		$_tot   = $qty *  $_total;
+      
+      	if($tcs_type == '2')
+        {
+          $_tcs     = $_tot * 0.1 / 100;
+          $last_tot = $_tot + $_tcs;
+        }
+        else
+        {
+          $_tcs     = 0;
+          $last_tot = $_tot + $_tcs;
+        }
+
+		if($avl_lmt > $last_tot)
+		{
+			$cre_lmt = $avl_lmt - $last_tot;
+
+			$qry_2 = mysqli_query($conn, "UPDATE `ss_customers` SET `avl_lmt` = '".$cre_lmt."' WHERE id = '".$customer_id."'");
+
+
+			$ins_1 = "UPDATE `ss_sales_details` SET `customer_id`= '".$customer_id."', `cid`= '".$cid."', `pid`= '".$pid."',`code`= '".$description."',`hsn`= '".$hsn."',`qty`= '".$qty."', `price`= '".$price."', `gst`= '".$gst."', `allowance`= '".$allowance."',`sta`= '".$sta."',`d_allowance`= '".$d_allowance."',`discount`= '".$discount."',`total_cost`= '".$last_tot."',`updatedate`= NOW() WHERE `auto_id` = '".$auto_id."'";
+
+			if(mysqli_query($conn, $ins_1))
+			{	
+				$up_stk = mysqli_query($conn, "UPDATE `ss_item_stk` SET `delar_id`=NULL, `delar_sales` = NULL, `d_sales_date` = NULL, `delar_status` = '1' WHERE `delar_sales` = '".$so_no."' AND `cid`= '".$cid."' AND `product_id`= '".$pid."'");
+				
+				for($i = 0 ; $i < $qty ; $i++)
+				{
+					// $up_stk = mysqli_query($conn, "UPDATE `ss_item_stk` SET `sales_no` = '".$so_no."', `status` = '0' WHERE `id` = '".$code[$i]."' ");
+					$up_stk = mysqli_query($conn, "UPDATE `ss_item_stk` SET `delar_id`='".$customer_id."',`delar_sales` = '".$so_no."', `d_sales_date` = '".date('Y-m-d', strtotime($dated))."', `delar_status` = '0' WHERE `id` = '".$code[$i]."' ");
+				}
+				
+				// $stock_qy = mysqli_fetch_object(mysqli_query($conn, "SELECT extra FROM `ss_items` WHERE id = '".$pid."' AND published = '1' AND status = '1'"));
+
+				// $stock_re = $stock_qy->extra - $stk_re;
+
+				// $stock_up = mysqli_query($conn, "UPDATE `ss_items` SET `extra`= '".$stock_re."' WHERE id = '".$pid."' ");
+
+				$response['status']=true;
+				$response['message']="<strong>Well done ! </strong>Your Sales Added Successfully.";
+			    echo json_encode($response);
+			}
+			else
+			{
+				$response['status']=false;
+				$response['message']="<strong>Oops ! </strong>Your Sales Can't Added.";
+		        echo json_encode($response);
+			}
+		}
+		else
+		{
+			$response['status']=false;
+			$response['message']="<strong>Oops ! </strong>Your Bill Amount Greater than Credit Limit.";
+	        echo json_encode($response);	
+		}
+	}
+	elseif($customer_id =='')
+	{
+		$response['status']=false;
+		$response['message']="<strong>Oops ! </strong>Select Customer Name";
+        echo json_encode($response);
+	}
+	elseif($dated =='')
+	{
+		$response['status']=false;
+		$response['message']="<strong>Oops ! </strong>Select Order Date";
+        echo json_encode($response);
+	}
+	elseif($cid =='')
+	{
+		$response['status']=false;
+		$response['message']="<strong>Oops ! </strong>Select Categories Name";
+        echo json_encode($response);
+	}
+	elseif($pid =='')
+	{
+		$response['status']=false;
+		$response['message']="<strong>Oops ! </strong>Select Product Name";
+        echo json_encode($response);
+	}
+
+}
+
+?>
